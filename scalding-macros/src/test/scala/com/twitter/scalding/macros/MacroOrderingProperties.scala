@@ -491,7 +491,7 @@ class MacroOrderingProperties extends FunSuite with PropertyChecks with ShouldMa
   }
 
   test("test specific tuple 3") {
-    val c = List(("", None, ""),
+    val c = List(("", None, " "),
       ("a", Some(1), "b"))
     checkManyExplicit(c.map { i => (i, i) })
   }
