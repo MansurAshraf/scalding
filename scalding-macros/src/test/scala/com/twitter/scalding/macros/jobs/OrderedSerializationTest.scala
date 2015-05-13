@@ -174,7 +174,7 @@ object AuroraJobRecord {
 
   implicit val auroraRecord = Arbitrary {
     for {
-      timestamp <- Arbitrary.arbitrary[Long]
+      timestamp <- Gen.choose(0L, Long.MaxValue)
       zone <- Gen.nonEmptyListOf(Gen.alphaNumChar) map (_.mkString)
       source <- Gen.nonEmptyListOf(Gen.alphaNumChar) map (_.mkString)
       c <- Gen.nonEmptyListOf(Gen.alphaNumChar) map (_.mkString)
