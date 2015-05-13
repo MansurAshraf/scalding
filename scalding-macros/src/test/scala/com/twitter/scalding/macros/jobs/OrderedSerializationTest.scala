@@ -2,17 +2,16 @@ package com.twitter.scalding.macros.jobs
 
 import java.util.TimeZone
 
-import com.twitter.scalding._
-import com.twitter.scalding.platform.{HadoopPlatformJobTest, HadoopPlatformTest}
+import com.twitter.scalding.{ RichDate, _ }
+import com.twitter.scalding.platform.{ HadoopPlatformJobTest, HadoopPlatformTest }
 import com.twitter.scalding.serialization.OrderedSerialization
 import com.twitter.scalding.typed.TypedPipe
-import org.scalacheck.{Arbitrary, Gen}
+import org.scalacheck.{ Arbitrary, Gen }
 import org.scalatest.FunSuite
 import org.scalatest.prop.PropertyChecks
 
 import scala.language.experimental.macros
-import scala.math.{Ordering, Ordered}
-import com.twitter.scalding.RichDate
+import scala.math.{ Ordered, Ordering }
 
 /**
  * @author Mansur Ashraf.
@@ -20,23 +19,22 @@ import com.twitter.scalding.RichDate
 class OrderedSerializationTest extends FunSuite with PropertyChecks with HadoopPlatformTest {
 
   test("Test Fork/Join") {
+
     import AuroraJobRecord._
+    forAll(maxSize(1)) { (in1: List[AuroraJobRecord], in2: List[Sample]) =>
 
-    forAll(maxSize(1)) { (in1: List[Sample], in2: List[AuroraJobRecord]) =>
-
-      val fn = (arg: Args) => new ComplexJob(in1, in2, arg)
+      val fn = (arg: Args) => new ComplexJob(in2, in1, arg)
 
       HadoopPlatformJobTest(fn, cluster)
         .arg("output1", "output1")
         .arg("output2", "output2")
         .sink[(ContainerStat, EnhancedAuroraJobRecord)](TypedTsv[(ContainerStat, EnhancedAuroraJobRecord)]("output2")) {
-        actual =>
-          fail("should not reach this block")
-      }.sink[(String, AuroraJobKey)](TypedTsv[(String, AuroraJobKey)]("output1")) { x => () }
+          actual =>
+            fail("should not reach this block")
+        }.sink[(String, AuroraJobKey)](TypedTsv[(String, AuroraJobKey)]("output1")) { x => () }
         .run
     }
   }
-
 
   test("Test serialization") {
     import RecordContainer._
@@ -50,9 +48,9 @@ class OrderedSerializationTest extends FunSuite with PropertyChecks with HadoopP
       JobTest(fn)
         .arg("output", "output")
         .sink[((Int, Record), Int)](TypedTsv[((Int, Record), Int)]("output")) {
-        actual =>
-          assert(expected.sortBy { case ((_, x), _) => x } == actual.toList.sortBy { case ((_, x), _) => x })
-      }
+          actual =>
+            assert(expected.sortBy { case ((_, x), _) => x } == actual.toList.sortBy { case ((_, x), _) => x })
+        }
         .run
     }
   }
@@ -161,8 +159,6 @@ class ComplexJob(input1: List[Sample], input2: List[AuroraJobRecord], args: Args
       .map(s => (s.day.toString(), s.key))
       .write(TypedTsv[(String, AuroraJobKey)](args("output1")))
 
-
-
     stats.join(metadata)
       .values
       .map(t => (t._1, t._2))
@@ -174,40 +170,37 @@ class ComplexJob(input1: List[Sample], input2: List[AuroraJobRecord], args: Args
     .write(TypedTsv[(ContainerStat, EnhancedAuroraJobRecord)](args("output2")))
 }
 
-
 object AuroraJobRecord {
-
-  implicit val sample = Arbitrary {
-    for {
-      a <- Gen.nonEmptyListOf(Gen.alphaNumChar) map (_.mkString)
-      b <- Gen.nonEmptyListOf(Gen.alphaNumChar) map (_.mkString)
-      c <- Arbitrary.arbitrary[Long]
-      d <- Arbitrary.arbitrary[Long]
-      e <- Gen.nonEmptyListOf(Gen.alphaNumChar) map (_.mkString)
-      f <- Arbitrary.arbitrary[Option[String]]
-    } yield Sample(a, b, c, d, e, f)
-  }
-
-  implicit val sampleList: Arbitrary[List[Sample]] = Arbitrary {
-    Gen.nonEmptyListOf(Arbitrary.arbitrary[Sample])
-  }
 
   implicit val auroraRecord = Arbitrary {
     for {
-      a <- Arbitrary.arbitrary[Long]
-      b <- Gen.nonEmptyListOf(Gen.alphaNumChar) map (_.mkString)
+      timestamp <- Arbitrary.arbitrary[Long]
+      zone <- Gen.nonEmptyListOf(Gen.alphaNumChar) map (_.mkString)
+      source <- Gen.nonEmptyListOf(Gen.alphaNumChar) map (_.mkString)
       c <- Gen.nonEmptyListOf(Gen.alphaNumChar) map (_.mkString)
       d <- Gen.nonEmptyListOf(Gen.alphaNumChar) map (_.mkString)
       e <- Gen.nonEmptyListOf(Gen.alphaNumChar) map (_.mkString)
       f <- Arbitrary.arbitrary[Boolean]
       g <- Arbitrary.arbitrary[Boolean]
       h <- Arbitrary.arbitrary[Boolean]
-    } yield AuroraJobRecord(a, b, c, d, e, f, g, h)
+      i <- Arbitrary.arbitrary[Long]
+    } yield (AuroraJobRecord(timestamp, zone, c, d, e, f, g, h), Sample(c, source, timestamp, i, e, Option(e)))
   }
 
   implicit val jobList: Arbitrary[List[AuroraJobRecord]] = Arbitrary {
-    Gen.nonEmptyListOf(Arbitrary.arbitrary[AuroraJobRecord])
+    for {
+      gen <- Gen.nonEmptyListOf(Arbitrary.arbitrary[(AuroraJobRecord, Sample)])
+      jobList <- gen.map { _._1 }
+    } yield jobList
   }
+
+  implicit val sampleList: Arbitrary[List[Sample]] = Arbitrary {
+    for {
+      gen <- Gen.nonEmptyListOf(Arbitrary.arbitrary[(AuroraJobRecord, Sample)])
+      sampleList <- gen.map { _._2 }
+    } yield sampleList
+  }
+
 }
 
 case class AuroraJobRecord(timestamp: Long,
@@ -278,7 +271,6 @@ case class ContainerStat(timestamp: Long,
                          diskUsage: String,
                          diskReservation: String) {
 
-
 }
 
 object ContainerStat {
@@ -292,8 +284,6 @@ object ContainerStat {
     // use Option so the calling code can make choices on missing samples.
     // Other metrics can be treated as 0.
 
-
-
     ContainerStat(ts, source, zone, None, 0.0, "", "", "", "")
   }
 
@@ -301,17 +291,15 @@ object ContainerStat {
     a
   }
 
-
 }
 
-
 case class Sample(
-                   serviceName: String,
-                   source: String,
-                   timestampMillis: Long,
-                   granularityMillis: Long,
-                   metrics: String,
-                   zone: Option[String])
+  serviceName: String,
+  source: String,
+  timestampMillis: Long,
+  granularityMillis: Long,
+  metrics: String,
+  zone: Option[String])
 
 object AuroraSampleGroupingKey {
   def apply(r: EnhancedAuroraJobRecord): AuroraSampleGroupingKey = {
@@ -335,7 +323,4 @@ object AuroraSampleGroupingKey {
 
 case class AuroraSampleGroupingKey(day: RichDate, key: AuroraJobKey) {
 }
-
-
-
 
