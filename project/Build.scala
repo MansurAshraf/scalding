@@ -118,9 +118,9 @@ object ScaldingBuild extends Build {
     publishTo <<= version { v =>
       Some(
         if (v.trim.endsWith("SNAPSHOT"))
-          Opts.resolver.sonatypeSnapshots
+          Opts.resolver.mavenLocalFile
         else
-          Opts.resolver.sonatypeStaging
+          Opts.resolver.mavenLocalFile
           //"twttr" at "http://artifactory.local.twitter.com/libs-releases-local"
       )
     },

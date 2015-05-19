@@ -28,7 +28,11 @@ import cascading.flow.FlowDef
 import cascading.pipe.{ Each, Pipe }
 import cascading.tap.Tap
 import cascading.tuple.{ Fields, Tuple => CTuple, TupleEntry }
-import java.util.Random // prefer to scala.util.Random as this is serializable
+import java.util.Random
+
+import com.twitter.scalding.serialization.OrderedSerialization
+
+// prefer to scala.util.Random as this is serializable
 
 import scala.concurrent.Future
 
@@ -88,13 +92,15 @@ object TypedPipe extends Serializable {
    *
    * This method is the Vitaly-was-right method.
    */
-  implicit def toHashJoinable[K, V](pipe: TypedPipe[(K, V)])(implicit ord: Ordering[K]): HashJoinable[K, V] =
+  implicit def toHashJoinable[K, V](pipe: TypedPipe[(K, V)])(implicit ord: Ordering[K]): HashJoinable[K, V] = {
+    assert(ord.isInstanceOf[OrderedSerialization[_]])
     new HashJoinable[K, V] {
       def mapped = pipe
       def keyOrdering = ord
       def reducers = None
       def joinFunction = CoGroupable.castingJoinFunction[V]
     }
+  }
 
   /**
    * TypedPipe instances are monoids. They are isomorphic to multisets.
@@ -179,8 +185,10 @@ trait TypedPipe[+T] extends Serializable {
    * in some sense, this is the dual of groupAll
    */
   @annotation.implicitNotFound(msg = "For asKeys method to work, the type in TypedPipe must have an Ordering.")
-  def asKeys[U >: T](implicit ord: Ordering[U]): Grouped[U, Unit] =
+  def asKeys[U >: T](implicit ord: Ordering[U]): Grouped[U, Unit] = {
+    assert(ord.isInstanceOf[OrderedSerialization[_]])
     map((_, ())).group
+  }
 
   /**
    * If T <:< U, then this is safe to treat as TypedPipe[U] due to covariance
@@ -234,6 +242,7 @@ trait TypedPipe[+T] extends Serializable {
   @annotation.implicitNotFound(msg = "For distinctBy method to work, the type to distinct on in the TypedPipe must have an Ordering.")
   def distinctBy[U](fn: T => U, numReducers: Option[Int] = None)(implicit ord: Ordering[_ >: U]): TypedPipe[T] = {
     // cast because Ordering is not contravariant, but should be (and this cast is safe)
+    assert(ord.isInstanceOf[OrderedSerialization[_]])
     implicit val ordT: Ordering[U] = ord.asInstanceOf[Ordering[U]]
 
     // Semigroup to handle duplicates for a given key might have different values.
@@ -345,22 +354,25 @@ trait TypedPipe[+T] extends Serializable {
   /**
    * This is the default means of grouping all pairs with the same key. Generally this triggers 1 Map/Reduce transition
    */
-  def group[K, V](implicit ev: <:<[T, (K, V)], ord: Ordering[K]): Grouped[K, V] =
+  def group[K, V](implicit ev: <:<[T, (K, V)], ord: Ordering[K]): Grouped[K, V] = {
     //If the type of T is not (K,V), then at compile time, this will fail.  It uses implicits to do
     //a compile time check that one type is equivalent to another.  If T is not (K,V), we can't
     //automatically group.  We cast because it is safe to do so, and we need to convert to K,V, but
     //the ev is not needed for the cast.  In fact, you can do the cast with ev(t) and it will return
     //it as (K,V), but the problem is, ev is not serializable.  So we do the cast, which due to ev
     //being present, will always pass.
+    assert(ord.isInstanceOf[OrderedSerialization[_]])
     Grouped(raiseTo[(K, V)])
+  }
 
   /** Send all items to a single reducer */
   def groupAll: Grouped[Unit, T] = groupBy(x => ()).withReducers(1)
 
   /** Given a key function, add the key, then call .group */
-  def groupBy[K](g: T => K)(implicit ord: Ordering[K]): Grouped[K, T] =
+  def groupBy[K](g: T => K)(implicit ord: Ordering[K]): Grouped[K, T] = {
+    assert(ord.isInstanceOf[OrderedSerialization[_]])
     map { t => (g(t), t) }.group
-
+  }
   /**
    * Forces a shuffle by randomly assigning each item into one
    * of the partitions.
@@ -445,8 +457,10 @@ trait TypedPipe[+T] extends Serializable {
   /**
    * Reasonably common shortcut for cases of associative/commutative reduction by Key
    */
-  def sumByKey[K, V](implicit ev: T <:< (K, V), ord: Ordering[K], plus: Semigroup[V]): UnsortedGrouped[K, V] =
+  def sumByKey[K, V](implicit ev: T <:< (K, V), ord: Ordering[K], plus: Semigroup[V]): UnsortedGrouped[K, V] = {
+    assert(ord.isInstanceOf[OrderedSerialization[_]])
     group[K, V].sum[V]
+  }
 
   /**
    * This is used when you are working with Execution[T] to create loops.
@@ -664,8 +678,10 @@ trait TypedPipe[+T] extends Serializable {
     delta: Double = 0.01, //5 rows (= 5 hashes)
     seed: Int = 12345)(implicit ev: TypedPipe[T] <:< TypedPipe[(K, V)],
       serialization: K => Array[Byte],
-      ordering: Ordering[K]): Sketched[K, V] =
+      ordering: Ordering[K]): Sketched[K, V] = {
+    assert(ordering.isInstanceOf[OrderedSerialization[_]])
     Sketched(ev(this), reducers, delta, eps, seed)
+  }
 
   /**
    * If any errors happen below this line, but before a groupBy, write to a TypedSink
