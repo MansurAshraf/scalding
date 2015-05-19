@@ -186,7 +186,7 @@ trait TypedPipe[+T] extends Serializable {
    */
   @annotation.implicitNotFound(msg = "For asKeys method to work, the type in TypedPipe must have an Ordering.")
   def asKeys[U >: T](implicit ord: Ordering[U]): Grouped[U, Unit] = {
-    assert(ord.isInstanceOf[OrderedSerialization[_]])
+    assert(ord.isInstanceOf[OrderedSerialization[_]], ord.getClass.getName)
     map((_, ())).group
   }
 
@@ -242,7 +242,7 @@ trait TypedPipe[+T] extends Serializable {
   @annotation.implicitNotFound(msg = "For distinctBy method to work, the type to distinct on in the TypedPipe must have an Ordering.")
   def distinctBy[U](fn: T => U, numReducers: Option[Int] = None)(implicit ord: Ordering[_ >: U]): TypedPipe[T] = {
     // cast because Ordering is not contravariant, but should be (and this cast is safe)
-    assert(ord.isInstanceOf[OrderedSerialization[_]])
+    assert(ord.isInstanceOf[OrderedSerialization[_]], ord.getClass.getName)
     implicit val ordT: Ordering[U] = ord.asInstanceOf[Ordering[U]]
 
     // Semigroup to handle duplicates for a given key might have different values.
@@ -361,7 +361,7 @@ trait TypedPipe[+T] extends Serializable {
     //the ev is not needed for the cast.  In fact, you can do the cast with ev(t) and it will return
     //it as (K,V), but the problem is, ev is not serializable.  So we do the cast, which due to ev
     //being present, will always pass.
-    assert(ord.isInstanceOf[OrderedSerialization[_]])
+    assert(ord.isInstanceOf[OrderedSerialization[_]], ord.getClass.getName)
     Grouped(raiseTo[(K, V)])
   }
 
@@ -370,7 +370,7 @@ trait TypedPipe[+T] extends Serializable {
 
   /** Given a key function, add the key, then call .group */
   def groupBy[K](g: T => K)(implicit ord: Ordering[K]): Grouped[K, T] = {
-    assert(ord.isInstanceOf[OrderedSerialization[_]])
+    assert(ord.isInstanceOf[OrderedSerialization[_]], ord.getClass.getName)
     map { t => (g(t), t) }.group
   }
   /**
@@ -458,7 +458,7 @@ trait TypedPipe[+T] extends Serializable {
    * Reasonably common shortcut for cases of associative/commutative reduction by Key
    */
   def sumByKey[K, V](implicit ev: T <:< (K, V), ord: Ordering[K], plus: Semigroup[V]): UnsortedGrouped[K, V] = {
-    assert(ord.isInstanceOf[OrderedSerialization[_]])
+    assert(ord.isInstanceOf[OrderedSerialization[_]], ord.getClass.getName)
     group[K, V].sum[V]
   }
 
@@ -679,7 +679,7 @@ trait TypedPipe[+T] extends Serializable {
     seed: Int = 12345)(implicit ev: TypedPipe[T] <:< TypedPipe[(K, V)],
       serialization: K => Array[Byte],
       ordering: Ordering[K]): Sketched[K, V] = {
-    assert(ordering.isInstanceOf[OrderedSerialization[_]])
+    assert(ordering.isInstanceOf[OrderedSerialization[_]], ordering.getClass.getName)
     Sketched(ev(this), reducers, delta, eps, seed)
   }
 
